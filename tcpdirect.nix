@@ -21,6 +21,7 @@
   gcc,
   patchelf,
   git,
+  which,
 }:
 stdenv.mkDerivation rec {
   pname = "tcpdirect";
@@ -38,6 +39,7 @@ stdenv.mkDerivation rec {
     gcc
     patchelf
     git # needed for version info during build
+    which # needed by mmake scripts
   ];
 
   buildInputs = [
@@ -56,9 +58,16 @@ stdenv.mkDerivation rec {
   buildPhase = ''
     runHook preBuild
 
-    # Point to onload source tree for headers and build-time includes
-    export ONLOAD_TREE="${onloadSrc}"
     export HOME="$TMPDIR"
+
+    # Copy onload source to a writable location, patch shebangs, and
+    # replace /bin/pwd with pwd (doesn't exist in nix sandbox)
+    cp -r "${onloadSrc}" "$TMPDIR/onload-src"
+    chmod -R u+w "$TMPDIR/onload-src"
+    find "$TMPDIR/onload-src/scripts" -type f -exec sed -i 's|/bin/pwd|pwd|g' {} +
+    patchShebangs "$TMPDIR/onload-src/scripts"
+    export ONLOAD_TREE="$TMPDIR/onload-src"
+    export PATH="$ONLOAD_TREE/scripts:$PATH"
 
     # Initialize a fake git repo so version detection works
     git init -q
@@ -71,9 +80,7 @@ stdenv.mkDerivation rec {
     make -j$NIX_BUILD_CORES \
       CC="${stdenv.cc}/bin/gcc" \
       CLINK="${stdenv.cc}/bin/gcc" \
-      ONLOAD_TREE="${onloadSrc}" \
-      CITOOLS_LIB="${openonload}/lib/libcitools1.a" \
-      CIUL_LIB="${openonload}/lib/libciul1.a" \
+      ONLOAD_TREE="$TMPDIR/onload-src" \
       ${lib.optionalString ndebug "NDEBUG=1"}
 
     runHook postBuild
@@ -86,17 +93,13 @@ stdenv.mkDerivation rec {
 
     # Install libraries
     echo "Installing TCPDirect libraries..."
-    local buildRoot="build"
-    local libDir
-    libDir=$(find "$buildRoot" -type d -name lib | head -1)
-    if [ -n "$libDir" ]; then
-      cp -P "$libDir"/libonload_zf* $out/lib/ 2>/dev/null || true
-    fi
+    find build -name 'libonload_zf*' -exec cp -P {} $out/lib/ \;
+    echo "  Installed: $(ls $out/lib/)"
 
     # Install zf_stackdump tool
     echo "Installing zf_stackdump..."
     local binFile
-    binFile=$(find "$buildRoot" -name zf_stackdump -type f | head -1)
+    binFile=$(find build -name zf_stackdump -type f | head -1)
     if [ -n "$binFile" ]; then
       cp "$binFile" $out/bin/
     fi
@@ -107,9 +110,9 @@ stdenv.mkDerivation rec {
       for app in zfsink zfsend zfudppingpong zftcppingpong zfaltpingpong zftcpmtpong; do
         # Prefer shared-linked binaries
         local appFile
-        appFile=$(find "$buildRoot" -path "*/shared/$app" -type f | head -1)
+        appFile=$(find "build" -path "*/shared/$app" -type f | head -1)
         if [ -z "$appFile" ]; then
-          appFile=$(find "$buildRoot" -path "*/static/$app" -type f | head -1)
+          appFile=$(find "build" -path "*/static/$app" -type f | head -1)
         fi
         if [ -n "$appFile" ]; then
           cp "$appFile" $out/bin/
@@ -120,9 +123,9 @@ stdenv.mkDerivation rec {
       # Install trade_sim applications
       for app in trader_tcpdirect_ds_efvi trader_tcpdirect_ds_efvi_ct_rx; do
         local appFile
-        appFile=$(find "$buildRoot" -path "*/shared/$app" -type f | head -1)
+        appFile=$(find "build" -path "*/shared/$app" -type f | head -1)
         if [ -z "$appFile" ]; then
-          appFile=$(find "$buildRoot" -path "*/static/$app" -type f | head -1)
+          appFile=$(find "build" -path "*/static/$app" -type f | head -1)
         fi
         if [ -n "$appFile" ]; then
           cp "$appFile" $out/bin/
