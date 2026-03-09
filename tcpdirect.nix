@@ -62,6 +62,8 @@ stdenv.mkDerivation rec {
 
     # Initialize a fake git repo so version detection works
     git init -q
+    git config user.email "nix-build@localhost"
+    git config user.name "Nix Build"
     git add -A
     git commit -q -m "nix build" --allow-empty
 
