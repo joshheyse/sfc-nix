@@ -94,8 +94,19 @@ in {
         "onload"
       ];
 
-      # Ensure modules are loaded in the correct order via modprobe dependencies
+      # Module loading configuration:
+      # - Override in-kernel sfc with install commands that force our out-of-tree module
+      # - Block sfc_siena entirely (we don't need it)
+      # - Softdeps ensure correct load order: sfc -> sfc_resource -> sfc_char -> onload
       extraModprobeConfig = ''
+        ${optionalString cfg.useOutOfTreeSfc ''
+          # Force modprobe to load our out-of-tree sfc from the openonload package.
+          # Without this, the in-kernel sfc may be found first despite blacklisting,
+          # because boot.kernelModules explicitly loads modules (bypassing blacklist).
+          install sfc ${pkgs.kmod}/bin/insmod ${cfg.package}/lib/modules/${kernel.modDirVersion}/extra/openonload/sfc.ko
+          # Block the in-kernel sfc_siena entirely
+          install sfc_siena /bin/false
+        ''}
         # OpenOnload module dependencies
         softdep sfc_resource pre: sfc
         softdep sfc_char pre: sfc_resource
@@ -116,9 +127,39 @@ in {
         ExecStart = "${pkgs.kmod}/bin/modprobe onload";
       };
 
+      # Bring up sfc interfaces after module load
+      postStart = ''
+        # Wait briefly for interfaces to appear
+        sleep 1
+        for iface in /sys/class/net/*; do
+          iface_name="$(basename "$iface")"
+          if [ -e "$iface/device/driver" ]; then
+            driver="$(basename "$(readlink "$iface/device/driver")")"
+            if [ "$driver" = "sfc" ]; then
+              ${pkgs.iproute2}/bin/ip link set "$iface_name" up || true
+            fi
+          fi
+        done
+      '';
+
       # Only start if not already loaded
       unitConfig = {
         ConditionPathExists = "!/sys/module/onload";
+      };
+    };
+
+    # Onload control plane server - required for TCPDirect/ZF
+    systemd.services.onload-cp = {
+      description = "Onload Control Plane Server";
+      after = ["openonload.service"];
+      requires = ["openonload.service"];
+      wantedBy = ["multi-user.target"];
+
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${cfg.package}/bin/onload_cp_server";
+        Restart = "on-failure";
+        RestartSec = 2;
       };
     };
 

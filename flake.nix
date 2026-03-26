@@ -1,11 +1,11 @@
 {
-  description = "OpenOnload & TCPDirect - kernel bypass networking for Solarflare NICs";
+  description = "Solarflare NIC tooling - OpenOnload, TCPDirect, sfptpd, SolarCapture, and more for NixOS";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/release-25.11";
   };
 
-  outputs = {self, nixpkgs}: let
+  outputs = {nixpkgs, ...}: let
     system = "x86_64-linux";
     pkgs = import nixpkgs {inherit system;};
 
@@ -38,12 +38,27 @@
       inherit onloadSrc;
       withExamples = true;
     };
+
+    # Additional Solarflare tools
+    sfptpdPackage = pkgs.callPackage ./sfptpd.nix {};
+    sysjitterPackage = pkgs.callPackage ./sysjitter.nix {};
+    sfnettestPackage = pkgs.callPackage ./sfnettest.nix {};
+    ebpfAsmPackage = pkgs.callPackage ./ebpf-asm.nix {};
+    solarcapturePackage = pkgs.callPackage ./solarcapture.nix {
+      openonload = basePackage;
+      inherit onloadSrc;
+    };
   in {
     packages.${system} = {
       default = basePackage;
       with-examples = withExamplesPackage;
       tcpdirect = tcpdirectPackage;
       tcpdirect-with-examples = tcpdirectWithExamplesPackage;
+      sfptpd = sfptpdPackage;
+      sysjitter = sysjitterPackage;
+      sfnettest = sfnettestPackage;
+      ebpf-asm = ebpfAsmPackage;
+      solarcapture = solarcapturePackage;
     };
 
     nixosModules.default = import ./module.nix;
@@ -54,13 +69,23 @@
         inherit (final) openonload;
         inherit onloadSrc;
       };
+      sfptpd = final.callPackage ./sfptpd.nix {};
+      sysjitter = final.callPackage ./sysjitter.nix {};
+      sfnettest = final.callPackage ./sfnettest.nix {};
+      ebpf-asm = final.callPackage ./ebpf-asm.nix {};
+      solarcapture = final.callPackage ./solarcapture.nix {
+        inherit (final) openonload;
+        inherit onloadSrc;
+      };
     };
 
     devShells.${system}.default = pkgs.mkShell {
-      name = "openonload-dev";
+      name = "solarflare-dev";
       buildInputs = [
         withExamplesPackage
         tcpdirectWithExamplesPackage
+        sfnettestPackage
+        sysjitterPackage
         pkgs.gcc
         pkgs.gnumake
       ];

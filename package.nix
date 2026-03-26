@@ -220,7 +220,7 @@ stdenv.mkDerivation rec {
     # Install core binaries
     echo "Installing binaries..."
     for bin in onload onload_tool sfcirqaffinity sfcaffinity_config \
-               onload_stackdump onload_tcpdump solar_clusterd; do
+               onload_stackdump onload_tcpdump solar_clusterd onload_cp_server; do
       if [ -f "$topPath/build/$userBuild/tools/onload_$bin/$bin" ]; then
         cp "$topPath/build/$userBuild/tools/onload_$bin/$bin" $out/bin/
       elif [ -f "$topPath/build/$userBuild/tools/$bin/$bin" ]; then
