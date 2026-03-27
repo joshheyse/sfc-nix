@@ -17,6 +17,14 @@ with lib; let
     inherit kernel;
     withExamples = cfg.installExamples;
   };
+
+  # Minimal derivation containing only kernel modules for boot.extraModulePackages.
+  # The full package includes userspace binaries, libraries, headers, and docs which
+  # would bloat the initrd (~800MB) if passed directly to extraModulePackages.
+  kernelModulesOnly = pkgs.runCommand "openonload-modules-${openonloadPackage.version}" {} ''
+    mkdir -p $out/lib/modules
+    cp -r ${openonloadPackage}/lib/modules/* $out/lib/modules/
+  '';
   sfptpdPackage = pkgs.callPackage ./sfptpd.nix {};
 in {
   options.networking.openonload = {
@@ -111,8 +119,8 @@ in {
         "sfc_siena"
       ];
 
-      # Load OpenOnload kernel modules
-      extraModulePackages = [cfg.package];
+      # Load OpenOnload kernel modules (modules-only derivation to avoid initrd bloat)
+      extraModulePackages = [kernelModulesOnly];
 
       # Module load order is important:
       # sfc -> sfc_resource -> sfc_char -> onload
