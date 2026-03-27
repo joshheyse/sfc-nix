@@ -145,7 +145,7 @@ in {
           # Force modprobe to load our out-of-tree sfc from the openonload package.
           # Without this, the in-kernel sfc may be found first despite blacklisting,
           # because boot.kernelModules explicitly loads modules (bypassing blacklist).
-          install sfc ${pkgs.kmod}/bin/insmod ${cfg.package}/lib/modules/${kernel.modDirVersion}/extra/openonload/sfc.ko
+          install sfc ${pkgs.kmod}/bin/insmod ${kernelModulesOnly}/lib/modules/${kernel.modDirVersion}/extra/openonload/sfc.ko
           # Block the in-kernel sfc_siena entirely
           install sfc_siena /bin/false
         ''}
