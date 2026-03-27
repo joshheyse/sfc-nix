@@ -17,6 +17,7 @@ with lib; let
     inherit kernel;
     withExamples = cfg.installExamples;
   };
+  sfptpdPackage = pkgs.callPackage ./sfptpd.nix {};
 in {
   options.networking.openonload = {
     enable = mkEnableOption "OpenOnload kernel bypass networking for Solarflare NICs";
@@ -54,6 +55,34 @@ in {
       type = types.bool;
       default = false;
       description = "Whether to install ef_vi sample binaries (eflatency, efpingpong, etc.).";
+    };
+
+    sfptpd = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Enable sfptpd to discipline the Solarflare NIC hardware clock.
+          Required for accurate hardware timestamps from ef_vi/TCPDirect.
+          When enabled, also enables chrony for system clock NTP sync.
+        '';
+      };
+
+      package = mkOption {
+        type = types.package;
+        default = sfptpdPackage;
+        description = "The sfptpd package to use.";
+      };
+
+      mode = mkOption {
+        type = types.enum ["freerun" "crny"];
+        default = "crny";
+        description = ''
+          Sync mode for sfptpd:
+          - "crny": Sync NIC clock to system clock, which chrony syncs via NTP
+          - "freerun": NIC clock runs free, synced to system clock at startup only
+        '';
+      };
     };
   };
 
@@ -114,52 +143,74 @@ in {
       '';
     };
 
-    # Systemd service to ensure modules are loaded correctly and interfaces configured
-    systemd.services.openonload = {
-      description = "OpenOnload kernel module loader";
-      after = ["network-pre.target"];
-      before = ["network.target"];
-      wantedBy = ["multi-user.target"];
+    # Systemd services for OpenOnload and related daemons
+    systemd.services = {
+      # Ensure modules are loaded correctly and interfaces configured
+      openonload = {
+        description = "OpenOnload kernel module loader";
+        after = ["network-pre.target"];
+        before = ["network.target"];
+        wantedBy = ["multi-user.target"];
 
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = "${pkgs.kmod}/bin/modprobe onload";
-      };
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${pkgs.kmod}/bin/modprobe onload";
+        };
 
-      # Bring up sfc interfaces after module load
-      postStart = ''
-        # Wait briefly for interfaces to appear
-        sleep 1
-        for iface in /sys/class/net/*; do
-          iface_name="$(basename "$iface")"
-          if [ -e "$iface/device/driver" ]; then
-            driver="$(basename "$(readlink "$iface/device/driver")")"
-            if [ "$driver" = "sfc" ]; then
-              ${pkgs.iproute2}/bin/ip link set "$iface_name" up || true
+        # Bring up sfc interfaces after module load
+        postStart = ''
+          # Wait briefly for interfaces to appear
+          sleep 1
+          for iface in /sys/class/net/*; do
+            iface_name="$(basename "$iface")"
+            if [ -e "$iface/device/driver" ]; then
+              driver="$(basename "$(readlink "$iface/device/driver")")"
+              if [ "$driver" = "sfc" ]; then
+                ${pkgs.iproute2}/bin/ip link set "$iface_name" up || true
+              fi
             fi
-          fi
-        done
-      '';
+          done
+        '';
 
-      # Only start if not already loaded
-      unitConfig = {
-        ConditionPathExists = "!/sys/module/onload";
+        # Only start if not already loaded
+        unitConfig = {
+          ConditionPathExists = "!/sys/module/onload";
+        };
       };
-    };
 
-    # Onload control plane server - required for TCPDirect/ZF
-    systemd.services.onload-cp = {
-      description = "Onload Control Plane Server";
-      after = ["openonload.service"];
-      requires = ["openonload.service"];
-      wantedBy = ["multi-user.target"];
+      # Onload control plane server - required for TCPDirect/ZF
+      onload-cp = {
+        description = "Onload Control Plane Server";
+        after = ["openonload.service"];
+        requires = ["openonload.service"];
+        wantedBy = ["multi-user.target"];
 
-      serviceConfig = {
-        Type = "simple";
-        ExecStart = "${cfg.package}/bin/onload_cp_server";
-        Restart = "on-failure";
-        RestartSec = 2;
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = "${cfg.package}/bin/onload_cp_server";
+          Restart = "on-failure";
+          RestartSec = 2;
+        };
+      };
+
+      # sfptpd: discipline the NIC hardware clock for accurate hardware timestamps
+      sfptpd = mkIf cfg.sfptpd.enable {
+        description = "Solarflare Enhanced PTP Daemon";
+        after =
+          ["openonload.service" "network.target"]
+          ++ optionals (cfg.sfptpd.mode == "crny") ["chronyd.service"];
+        requires = ["openonload.service"];
+        wantedBy = ["multi-user.target"];
+
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = "${cfg.sfptpd.package}/bin/sfptpd -f /etc/sfptpd.conf";
+          Restart = "on-failure";
+          RestartSec = 5;
+          # sfptpd needs capabilities to adjust hardware clocks
+          AmbientCapabilities = "CAP_SYS_TIME CAP_NET_ADMIN CAP_NET_RAW";
+        };
       };
     };
 
@@ -172,5 +223,46 @@ in {
       KERNEL=="onload", MODE="0660", GROUP="${cfg.accessGroup}"
       KERNEL=="sfc_char", MODE="0660", GROUP="${cfg.accessGroup}"
     '';
+
+    # sfptpd chrony integration
+    services.chrony = mkIf (cfg.sfptpd.enable && cfg.sfptpd.mode == "crny") {
+      enable = true;
+      extraConfig = ''
+        # Allow sfptpd to query chrony's tracking data
+        allow 127.0.0.1
+        allow ::1
+      '';
+    };
+
+    environment.etc."sfptpd.conf" = mkIf cfg.sfptpd.enable {
+      text =
+        if cfg.sfptpd.mode == "crny"
+        then ''
+          [general]
+          sync_module crny crny1
+          message_log syslog
+          stats_log off
+
+          # Sync NIC clocks to system clock; let chrony handle NTP
+          clock_readonly system
+
+          [crny1]
+          # Chrony is the NTP source for the system clock.
+          # sfptpd syncs the NIC PHC to match.
+        ''
+        else ''
+          [general]
+          sync_module freerun fr1
+          message_log syslog
+          stats_log off
+          clock_readonly system
+          non_solarflare_nics off
+
+          [fr1]
+          interface system
+        '';
+    };
+
+    environment.systemPackages = mkIf cfg.sfptpd.enable [cfg.sfptpd.package];
   };
 }
