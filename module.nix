@@ -90,7 +90,7 @@ in {
     # Group all environment settings together
     environment = {
       # Add OpenOnload package to system packages (provides onload, ef_vi tools, etc.)
-      systemPackages = [cfg.package];
+      systemPackages = [cfg.package] ++ optionals cfg.sfptpd.enable [cfg.sfptpd.package];
 
       # Set library path for applications using ef_vi
       sessionVariables = {
@@ -263,6 +263,5 @@ in {
         '';
     };
 
-    environment.systemPackages = mkIf cfg.sfptpd.enable [cfg.sfptpd.package];
   };
 }
