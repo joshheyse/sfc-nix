@@ -30,6 +30,7 @@
   libtool,
   pkg-config,
   patchelf,
+  nukeReferences,
 }:
 stdenv.mkDerivation rec {
   pname = "openonload";
@@ -50,6 +51,7 @@ stdenv.mkDerivation rec {
     which
     kmod
     gawk
+    nukeReferences
     gnused
     coreutils
     bash
@@ -202,11 +204,16 @@ stdenv.mkDerivation rec {
 
       local driverBuild="$(mmaketool --driverbuild)"
 
-      # Install kernel modules to separate kmod output (keeps initrd small)
+      # Install kernel modules to separate kmod output (keeps initrd small).
+      # Strip embedded nix store paths (build dir, compiler toolchain) from .ko files
+      # so nix's closure scanner doesn't pull linux-dev/rustc/llvm/gcc into the initrd.
       mkdir -p $kmod/lib/modules/${kernel.modDirVersion}/extra/openonload
 
       echo "Installing kernel modules..."
       find "$topPath/build/$driverBuild" -name '*.ko' -exec cp {} $kmod/lib/modules/${kernel.modDirVersion}/extra/openonload/ \;
+
+      echo "Stripping store references from kernel modules..."
+      find $kmod -name '*.ko' -exec nuke-refs -e $kmod {} \;
 
       # Install module load/unload scripts to main output
       mkdir -p $out/share/openonload
