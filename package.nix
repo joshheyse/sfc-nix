@@ -2,14 +2,12 @@
 #
 # Parameterized build:
 #   kernel ? null        - null = userspace-only, non-null = full build with kernel modules
-#   withExamples ? false - true = also install ef_vi sample binaries
 #   ndebug ? true        - true = release build (NDEBUG=1, no assertions, -fomit-frame-pointer)
 {
   lib,
   stdenv,
   fetchFromGitHub,
   kernel ? null,
-  withExamples ? false,
   ndebug ? true,
   perl,
   python3,
@@ -36,7 +34,7 @@ stdenv.mkDerivation rec {
   pname = "openonload";
   version = "9.0.2";
 
-  outputs = ["out"] ++ lib.optionals (kernel != null) ["kmod"];
+  outputs = ["out" "examples"] ++ lib.optionals (kernel != null) ["kmod"];
 
   src = fetchFromGitHub {
     owner = "Xilinx-CNS";
@@ -243,33 +241,34 @@ stdenv.mkDerivation rec {
     cp scripts/onload $out/bin/
     chmod +x $out/bin/onload
 
-    ${lib.optionalString withExamples ''
-      # Install ef_vi sample applications
-      echo "Installing ef_vi sample applications..."
-      local efviDir="$topPath/build/$userBuild/tests/ef_vi"
-      for sample in eflatency efpingpong efsend efsink efforward eftap efrss \
-                    efsend_pio efsend_pio_warm efsink_packed efforward_packed \
-                    efjumborx exchange trader_onload_ds_efvi \
-                    efrink_controller efrink_consumer \
-                    efdelegated_client efdelegated_server \
-                    efsend_timestamping efsend_warming efsend_cplane; do
-        # Check both possible locations
-        if [ -f "$efviDir/$sample" ]; then
-          cp "$efviDir/$sample" $out/bin/
-          echo "  Installed $sample"
-        elif [ -f "$efviDir/$sample/$sample" ]; then
-          cp "$efviDir/$sample/$sample" $out/bin/
-          echo "  Installed $sample"
-        fi
-      done
-
-      # Install sfnt-pingpong if available
-      local sfntDir="$topPath/build/$userBuild/tests/sfnt-pingpong"
-      if [ -f "$sfntDir/sfnt-pingpong" ]; then
-        cp "$sfntDir/sfnt-pingpong" $out/bin/
-        echo "  Installed sfnt-pingpong"
+    # Install ef_vi sample applications to separate output (avoids changing
+    # the main derivation hash when toggling examples on/off, which would
+    # otherwise force a kernel module rebuild and new initrd).
+    mkdir -p $examples/bin
+    echo "Installing ef_vi sample applications..."
+    local efviDir="$topPath/build/$userBuild/tests/ef_vi"
+    for sample in eflatency efpingpong efsend efsink efforward eftap efrss \
+                  efsend_pio efsend_pio_warm efsink_packed efforward_packed \
+                  efjumborx exchange trader_onload_ds_efvi \
+                  efrink_controller efrink_consumer \
+                  efdelegated_client efdelegated_server \
+                  efsend_timestamping efsend_warming efsend_cplane; do
+      # Check both possible locations
+      if [ -f "$efviDir/$sample" ]; then
+        cp "$efviDir/$sample" $examples/bin/
+        echo "  Installed $sample"
+      elif [ -f "$efviDir/$sample/$sample" ]; then
+        cp "$efviDir/$sample/$sample" $examples/bin/
+        echo "  Installed $sample"
       fi
-    ''}
+    done
+
+    # Install sfnt-pingpong if available
+    local sfntDir="$topPath/build/$userBuild/tests/sfnt-pingpong"
+    if [ -f "$sfntDir/sfnt-pingpong" ]; then
+      cp "$sfntDir/sfnt-pingpong" $examples/bin/
+      echo "  Installed sfnt-pingpong"
+    fi
 
     # Install headers for ef_vi development
     echo "Installing headers..."
@@ -284,7 +283,7 @@ stdenv.mkDerivation rec {
   # Fix library paths in binaries and libraries BEFORE the fixup phase checks RPATH
   preFixup = ''
     echo "=== Fixing RPATH in binaries ==="
-    for bin in $out/bin/*; do
+    for bin in $out/bin/* $examples/bin/*; do
       if [ -f "$bin" ] && [ -x "$bin" ]; then
         echo "Fixing $bin"
         patchelf --set-rpath "$out/lib:${lib.makeLibraryPath buildInputs}" "$bin" 2>&1 || echo "  (skipped)"

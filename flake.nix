@@ -21,11 +21,6 @@
     # Userspace-only openonload (no kernel modules)
     basePackage = pkgs.callPackage ./package.nix {};
 
-    # Userspace-only with examples
-    withExamplesPackage = pkgs.callPackage ./package.nix {
-      withExamples = true;
-    };
-
     # TCPDirect (userspace-only)
     tcpdirectPackage = pkgs.callPackage ./tcpdirect.nix {
       openonload = basePackage;
@@ -51,7 +46,7 @@
   in {
     packages.${system} = {
       default = basePackage;
-      with-examples = withExamplesPackage;
+      inherit (basePackage) examples;
       tcpdirect = tcpdirectPackage;
       tcpdirect-with-examples = tcpdirectWithExamplesPackage;
       sfptpd = sfptpdPackage;
@@ -82,7 +77,8 @@
     devShells.${system}.default = pkgs.mkShell {
       name = "solarflare-dev";
       buildInputs = [
-        withExamplesPackage
+        basePackage
+        basePackage.examples
         tcpdirectWithExamplesPackage
         sfnettestPackage
         sysjitterPackage
@@ -91,8 +87,8 @@
       ];
 
       shellHook = ''
-        export EFVI_INCLUDE_PATH="${withExamplesPackage}/include"
-        export EFVI_LIB_PATH="${withExamplesPackage}/lib"
+        export EFVI_INCLUDE_PATH="${basePackage}/include"
+        export EFVI_LIB_PATH="${basePackage}/lib"
         export ZF_INCLUDE_PATH="${tcpdirectWithExamplesPackage}/include"
         export ZF_LIB_PATH="${tcpdirectWithExamplesPackage}/lib"
       '';

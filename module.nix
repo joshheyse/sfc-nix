@@ -15,7 +15,6 @@ with lib; let
   inherit (config.boot.kernelPackages) kernel;
   openonloadPackage = pkgs.callPackage ./package.nix {
     inherit kernel;
-    withExamples = cfg.installExamples;
   };
 
   sfptpdPackage = pkgs.callPackage ./sfptpd.nix {};
@@ -91,7 +90,10 @@ in {
     # Group all environment settings together
     environment = {
       # Add OpenOnload package to system packages (provides onload, ef_vi tools, etc.)
-      systemPackages = [cfg.package] ++ optionals cfg.sfptpd.enable [cfg.sfptpd.package];
+      systemPackages =
+        [cfg.package]
+        ++ optionals cfg.installExamples [cfg.package.examples]
+        ++ optionals cfg.sfptpd.enable [cfg.sfptpd.package];
 
       # Set library path for applications using ef_vi
       sessionVariables = {
