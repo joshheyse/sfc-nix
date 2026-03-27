@@ -21,14 +21,17 @@ with lib; let
   # Minimal derivation containing only kernel modules for boot.extraModulePackages.
   # The full package includes userspace binaries, libraries, headers, and docs which
   # would bloat the initrd (~800MB) if passed directly to extraModulePackages.
-  # We use nukeReferences to strip embedded nix store paths from the .ko files,
-  # breaking the closure reference to the full openonload package.
+  #
+  # allowedRequisites enforces the closure contains only this derivation itself.
+  # nuke-refs strips embedded store paths from .ko ELF metadata so nix's scanner
+  # doesn't pull in the full openonload package or build-time deps.
   kernelModulesOnly = pkgs.runCommand "openonload-modules-${openonloadPackage.version}" {
     nativeBuildInputs = [pkgs.nukeReferences];
+    allowedRequisites = ["out"];
   } ''
     mkdir -p $out/lib/modules
     cp -r ${openonloadPackage}/lib/modules/* $out/lib/modules/
-    find $out -name '*.ko' -exec nuke-refs {} \;
+    find $out -name '*.ko' -exec nuke-refs -e $out {} \;
   '';
   sfptpdPackage = pkgs.callPackage ./sfptpd.nix {};
 in {
