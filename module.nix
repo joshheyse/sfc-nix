@@ -18,21 +18,6 @@ with lib; let
     withExamples = cfg.installExamples;
   };
 
-  # Minimal derivation containing only kernel modules for boot.extraModulePackages.
-  # The full package includes userspace binaries, libraries, headers, and docs which
-  # would bloat the initrd (~800MB) if passed directly to extraModulePackages.
-  #
-  # allowedRequisites enforces the closure contains only this derivation itself.
-  # nuke-refs strips embedded store paths from .ko ELF metadata so nix's scanner
-  # doesn't pull in the full openonload package or build-time deps.
-  kernelModulesOnly = pkgs.runCommand "openonload-modules-${openonloadPackage.version}" {
-    nativeBuildInputs = [pkgs.nukeReferences];
-    allowedRequisites = ["out"];
-  } ''
-    mkdir -p $out/lib/modules
-    cp -r ${openonloadPackage}/lib/modules/* $out/lib/modules/
-    find $out -name '*.ko' -exec nuke-refs -e $out {} \;
-  '';
   sfptpdPackage = pkgs.callPackage ./sfptpd.nix {};
 in {
   options.networking.openonload = {
@@ -127,8 +112,8 @@ in {
         "sfc_siena"
       ];
 
-      # Load OpenOnload kernel modules (modules-only derivation to avoid initrd bloat)
-      extraModulePackages = [kernelModulesOnly];
+      # Use the kmod output — contains only .ko files, keeping the initrd small
+      extraModulePackages = [cfg.package.kmod];
 
       # Module load order is important:
       # sfc -> sfc_resource -> sfc_char -> onload
@@ -148,7 +133,7 @@ in {
           # Force modprobe to load our out-of-tree sfc from the openonload package.
           # Without this, the in-kernel sfc may be found first despite blacklisting,
           # because boot.kernelModules explicitly loads modules (bypassing blacklist).
-          install sfc ${pkgs.kmod}/bin/insmod ${kernelModulesOnly}/lib/modules/${kernel.modDirVersion}/extra/openonload/sfc.ko
+          install sfc ${pkgs.kmod}/bin/insmod ${cfg.package.kmod}/lib/modules/${kernel.modDirVersion}/extra/openonload/sfc.ko
           # Block the in-kernel sfc_siena entirely
           install sfc_siena /bin/false
         ''}

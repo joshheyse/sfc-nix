@@ -35,6 +35,8 @@ stdenv.mkDerivation rec {
   pname = "openonload";
   version = "9.0.2";
 
+  outputs = ["out"] ++ lib.optionals (kernel != null) ["kmod"];
+
   src = fetchFromGitHub {
     owner = "Xilinx-CNS";
     repo = "onload";
@@ -200,14 +202,14 @@ stdenv.mkDerivation rec {
 
       local driverBuild="$(mmaketool --driverbuild)"
 
-      mkdir -p $out/lib/modules/${kernel.modDirVersion}/extra/openonload
-      mkdir -p $out/share/openonload
+      # Install kernel modules to separate kmod output (keeps initrd small)
+      mkdir -p $kmod/lib/modules/${kernel.modDirVersion}/extra/openonload
 
-      # Install kernel modules
       echo "Installing kernel modules..."
-      find "$topPath/build/$driverBuild" -name '*.ko' -exec cp {} $out/lib/modules/${kernel.modDirVersion}/extra/openonload/ \;
+      find "$topPath/build/$driverBuild" -name '*.ko' -exec cp {} $kmod/lib/modules/${kernel.modDirVersion}/extra/openonload/ \;
 
-      # Install module load/unload scripts
+      # Install module load/unload scripts to main output
+      mkdir -p $out/share/openonload
       cp src/driver/linux/load.sh $out/share/openonload/
       cp src/driver/linux/unload.sh $out/share/openonload/
     ''}
