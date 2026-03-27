@@ -141,6 +141,11 @@ in {
         softdep sfc_resource pre: sfc
         softdep sfc_char pre: sfc_resource
         softdep onload pre: sfc_char
+
+        # Let systemd manage onload_cp_server instead of the kernel spawning it.
+        # Without this, the kernel rejects the server with ENONET when no onloaded
+        # apps are running yet.
+        options onload cplane_spawn_server=0
       '';
     };
 
@@ -263,6 +268,5 @@ in {
           interface system
         '';
     };
-
   };
 }
