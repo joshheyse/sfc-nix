@@ -224,22 +224,35 @@ stdenv.mkDerivation rec {
     find "$topPath/build/$userBuild" -name '*.so*' -exec cp -P {} $out/lib/ \;
     find "$topPath/build/$userBuild" -name '*.a' -exec cp {} $out/lib/ \;
 
-    # Install core binaries
-    echo "Installing binaries..."
-    for bin in onload onload_tool sfcirqaffinity sfcaffinity_config \
-               onload_stackdump onload_tcpdump solar_clusterd onload_cp_server onload_cp_client; do
-      if [ -f "$topPath/build/$userBuild/tools/onload_$bin/$bin" ]; then
-        cp "$topPath/build/$userBuild/tools/onload_$bin/$bin" $out/bin/
-      elif [ -f "$topPath/build/$userBuild/tools/$bin/$bin" ]; then
-        cp "$topPath/build/$userBuild/tools/$bin/$bin" $out/bin/
-      elif [ -f "$topPath/build/$userBuild/tools/cplane/$bin" ]; then
-        cp "$topPath/build/$userBuild/tools/cplane/$bin" $out/bin/
+    # Install ELF binaries from the build tree. Paths come from upstream
+    # mmake.mk targets (src/tools/{cplane,ip}/mmake.mk). Missing entries fail
+    # the build so a future upstream layout change can't silently drop tools.
+    echo "Installing ELF binaries..."
+    for src in \
+        tools/cplane/onload_cp_client \
+        tools/cplane/onload_cp_server \
+        tools/ip/onload_stackdump \
+        tools/ip/onload_tcpdump.bin \
+        tools/ip/onload_fuser; do
+      local full="$topPath/build/$userBuild/$src"
+      if [ -f "$full" ]; then
+        cp "$full" "$out/bin/"
+      else
+        echo "ERROR: expected binary not built: $full" >&2
+        exit 1
       fi
     done
 
-    # Install the onload wrapper script
-    cp scripts/onload $out/bin/
-    chmod +x $out/bin/onload
+    # Install user-facing wrapper scripts from the source tree.
+    echo "Installing wrapper scripts..."
+    for script in onload onload_tool onload_tcpdump sfcirqaffinity sfcaffinity_config; do
+      if [ -f "scripts/$script" ]; then
+        install -m755 "scripts/$script" "$out/bin/$script"
+      else
+        echo "ERROR: expected script not found: scripts/$script" >&2
+        exit 1
+      fi
+    done
 
     # Install ef_vi sample applications to separate output (avoids changing
     # the main derivation hash when toggling examples on/off, which would
