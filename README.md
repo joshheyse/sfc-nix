@@ -48,6 +48,7 @@ networking.openonload.enable = true;
 | `loadModulesAtBoot` | bool | `true` | Load kernel modules at boot |
 | `useOutOfTreeSfc` | bool | `true` | Use out-of-tree sfc driver (blocks in-kernel module) |
 | `accessGroup` | string | `"wheel"` | Group for ef_vi device access |
+| `physModeGid` | `"root-only"` \| `"cap-net-raw"` \| int | `"root-only"` | Who may allocate `EF_PD_PHYS_MODE` PDs. `"cap-net-raw"` (-1) lets setcap'd binaries use phys mode without root |
 | `installExamples` | bool | `false` | Install ef_vi sample binaries |
 
 ### What the Module Does

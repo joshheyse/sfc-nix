@@ -51,6 +51,24 @@ in {
       description = "Group allowed to access ef_vi devices (onload, sfc_char).";
     };
 
+    physModeGid = mkOption {
+      type = types.either (types.enum ["root-only" "cap-net-raw"]) types.int;
+      default = "root-only";
+      description = ''
+        Who is allowed to allocate `EF_PD_PHYS_MODE` protection domains via ef_vi.
+        PHYS_MODE bypasses the IOMMU and gives userspace direct physical-address DMA —
+        required for the lowest-latency RX paths in ef_vi-based apps.
+
+        - "root-only": pass -2 (upstream module default). Only EUID=0 may use PHYS_MODE.
+        - "cap-net-raw": pass -1. Any process holding CAP_NET_RAW (e.g. via setcap) may
+          use PHYS_MODE. Recommended for hosts running setcap'd binaries instead of root.
+        - <integer gid>: only members of that group.
+
+        With the default, even a setcap'd binary (cap_net_raw+ep) is rejected — the
+        symptom is `ef_pd_alloc_by_name` returning -EPERM.
+      '';
+    };
+
     installExamples = mkOption {
       type = types.bool;
       default = false;
@@ -86,7 +104,14 @@ in {
     };
   };
 
-  config = mkIf cfg.enable {
+  config = mkIf cfg.enable (let
+    physModeGidValue =
+      if cfg.physModeGid == "root-only"
+      then "-2"
+      else if cfg.physModeGid == "cap-net-raw"
+      then "-1"
+      else toString cfg.physModeGid;
+  in {
     # Group all environment settings together
     environment = {
       # Add OpenOnload package to system packages (provides onload, ef_vi tools, etc.)
@@ -148,6 +173,10 @@ in {
         # Without this, the kernel rejects the server with ENONET when no onloaded
         # apps are running yet.
         options onload cplane_spawn_server=0
+
+        # Gate EF_PD_PHYS_MODE protection-domain allocation. See physModeGid option.
+        options sfc_char phys_mode_gid=${physModeGidValue}
+        options onload phys_mode_gid=${physModeGidValue}
       '';
     };
 
@@ -270,5 +299,5 @@ in {
           interface system
         '';
     };
-  };
+  });
 }
