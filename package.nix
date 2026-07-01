@@ -32,15 +32,19 @@
 }:
 stdenv.mkDerivation rec {
   pname = "openonload";
-  version = "9.0.2";
+  # Pinned to upstream master (post-v9.0.2): the latest tagged release predates
+  # Linux 6.18 and fails to build against it, whereas master documents support
+  # for kernel.org 6.1-7.0 and carries the 6.18 fixes (folio-based hugetlb
+  # index, net-driver auxbus updates). Revisit when a >9.0.2 tag ships.
+  version = "9.0.2-unstable-2026-06-30";
 
   outputs = ["out" "examples"] ++ lib.optionals (kernel != null) ["kmod"];
 
   src = fetchFromGitHub {
     owner = "Xilinx-CNS";
     repo = "onload";
-    rev = "v${version}";
-    hash = "sha256-wyvTtOjD6fwuT2OGGhr10F0Q7hXE97mGREhq7Ns14hw=";
+    rev = "3743bc95084fcbe6bcada4f528da30beb57af856";
+    hash = "sha256-sBJt6pIiSSYjt2NY8N75ugkcFgwdHf5GHzk+mBJU6wc=";
   };
 
   nativeBuildInputs = [
@@ -117,6 +121,24 @@ stdenv.mkDerivation rec {
       # Also fix mmakebuildtree kernel path check
       substituteInPlace scripts/mmakebuildtree \
         --replace-quiet '/lib/modules/' '${kernel.dev}/lib/modules/'
+
+      # kernel_compat.sh looks for Module.symvers under $KPATH (the kernel
+      # *source* tree, passed via -k) or an $O that no code path ever sets --
+      # but never under $KOUT (the objtree passed via -o). NixOS's split
+      # kernel-dev ships Module.symvers only in build/ (the objtree), so the
+      # lookup comes up empty and every EXPORT_SYMBOL probe silently falls
+      # back to grepping headers. That misdetects xsk_get_pool_from_qid
+      # (exported in net/xdp/xsk.c, not a header), leaving EFX_HAVE_XSK_POOL
+      # unset so the driver references the long-removed struct
+      # zero_copy_allocator and fails to build on >= 6.18. Repurpose the dead
+      # $O branch to consult $KOUT, which does point at the build/ objtree.
+      substituteInPlace src/driver/linux_net/scripts/kernel_compat_funcs.sh \
+        --replace-fail \
+          'elif [ -n "''${O:-}" -a -f "''${O:-}/Module.symvers" ] ; then' \
+          'elif [ -n "''${KOUT:-}" -a -f "''${KOUT:-}/Module.symvers" ] ; then' \
+        --replace-fail \
+          'KBUILD_MODULE_SYMVERS="$O/Module.symvers"' \
+          'KBUILD_MODULE_SYMVERS="$KOUT/Module.symvers"'
     ''}
   '';
 
