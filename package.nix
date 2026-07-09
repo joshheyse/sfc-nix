@@ -98,9 +98,14 @@ stdenv.mkDerivation rec {
     patchShebangs src/
 
     # Fix ALL hardcoded /bin paths - search and replace in all shell scripts
-    find . -type f \( -name "*.sh" -o -name "mmaketool" -o -name "mmakebuildtree" -o -name "mmake" -o -name "fns" -o -name "mmake-fns" \) -exec \
+    # (includes the installed wrapper scripts, which have no .sh extension)
+    find . -type f \( -name "*.sh" -o -name "mmaketool" -o -name "mmakebuildtree" -o -name "mmake" -o -name "fns" -o -name "mmake-fns" \
+                      -o -name "onload" -o -name "onload_tool" -o -name "onload_tcpdump" \
+                      -o -name "sfcirqaffinity" -o -name "sfcaffinity_config" \) -exec \
       sed -i \
         -e 's|/bin/pwd|pwd|g' \
+        -e 's|/sbin/lsmod|lsmod|g' \
+        -e 's|/sbin/modprobe|modprobe|g' \
         -e 's|/bin/uname|uname|g' \
         -e 's|/bin/sed|sed|g' \
         -e 's|/bin/mkdir|mkdir|g' \
@@ -111,6 +116,20 @@ stdenv.mkDerivation rec {
         -e 's|/bin/grep|grep|g' \
         -e 's|/bin/echo|echo|g' \
         {} \;
+
+    # The onload wrapper preloads the interposing library by the bare name
+    # libonload.so (upstream onload_install renames libcitransport0.so to
+    # libonload.so in /usr/lib64). On NixOS there is no global ld.so path, so
+    # point it at the store path directly; installPhase creates the symlink.
+    # The version banner's ldd|awk detection only yields a path for bare-name
+    # preloads ("name => path"), so replace that whole line with the path too.
+    substituteInPlace scripts/onload \
+      --replace-fail \
+        "lib=\$(LD_PRELOAD=libonload.so ldd /bin/sh |grep libonload |awk '{print \$3}')" \
+        'lib=${placeholder "out"}/lib/libonload.so' \
+      --replace-fail \
+        'preload=libonload.so' \
+        'preload=${placeholder "out"}/lib/libonload.so'
 
     ${lib.optionalString (kernel != null) ''
       # Fix kernel build path detection - OpenOnload looks in /lib/modules
@@ -245,6 +264,15 @@ stdenv.mkDerivation rec {
     echo "Installing userspace libraries..."
     find "$topPath/build/$userBuild" -name '*.so*' -exec cp -P {} $out/lib/ \;
     find "$topPath/build/$userBuild" -name '*.a' -exec cp {} $out/lib/ \;
+
+    # libcitransport0.so is the LD_PRELOAD interposing library; upstream
+    # onload_install installs it as libonload.so, which the onload wrapper
+    # (and users setting LD_PRELOAD by hand) expect to find under that name.
+    if [ ! -f "$out/lib/libcitransport0.so" ]; then
+      echo "ERROR: libcitransport0.so not built; cannot create libonload.so" >&2
+      exit 1
+    fi
+    ln -s libcitransport0.so $out/lib/libonload.so
 
     # Install ELF binaries from the build tree. Paths come from upstream
     # mmake.mk targets (src/tools/{cplane,ip}/mmake.mk). Missing entries fail
