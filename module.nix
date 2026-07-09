@@ -133,6 +133,14 @@ in {
 
     # Group all boot settings together
     boot = {
+      # Onload intercepts the syscall table via an indirect call into
+      # x64_sys_call, whose endbr64 the kernel deliberately seals at boot —
+      # with CONFIG_X86_KERNEL_IBT active, sfc_resource refuses to load
+      # ("check_syscall_ibt_valid: FATAL") and /dev/onload never appears.
+      # Upstream requires disabling IBT and has no fix planned
+      # (Xilinx-CNS/onload#299, #332). Takes effect after a reboot.
+      kernelParams = optional pkgs.stdenv.hostPlatform.isx86_64 "ibt=off";
+
       # Blacklist in-kernel sfc driver when using out-of-tree driver
       blacklistedKernelModules = mkIf cfg.useOutOfTreeSfc [
         "sfc"
