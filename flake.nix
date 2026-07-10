@@ -9,14 +9,12 @@
     system = "x86_64-linux";
     pkgs = import nixpkgs {inherit system;};
 
-    # Onload source tree (needed by tcpdirect at build time)
-    onloadSrc = pkgs.fetchFromGitHub {
-      owner = "Xilinx-CNS";
-      repo = "onload";
-      rev = "v${onloadVersion}";
-      hash = "sha256-wyvTtOjD6fwuT2OGGhr10F0Q7hXE97mGREhq7Ns14hw=";
-    };
-    onloadVersion = "9.0.2";
+    # Onload source tree (needed by tcpdirect and solarcapture at build
+    # time). MUST be the exact source the openonload package builds from:
+    # tcpdirect compiles ciul from this tree into libonload_zf_static.a,
+    # and mixing onload versions in one link yields a per-symbol blend of
+    # two ef_vi implementations (shifted ops tables → SIGSEGV at VI init).
+    onloadSrc = basePackage.src;
 
     # Userspace-only openonload (no kernel modules)
     basePackage = pkgs.callPackage ./package.nix {};
