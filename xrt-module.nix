@@ -33,5 +33,27 @@ in {
       extraModulePackages = [cfg.package];
       kernelModules = mkIf cfg.loadModuleAtBoot ["xclmgmt"];
     };
+
+    # /run/booted-system keeps the module tree selected at boot. Load from the
+    # new generation explicitly so a switch that adds xclmgmt can activate it
+    # without requiring a reboot first.
+    systemd.services.xrt-xclmgmt = mkIf cfg.loadModuleAtBoot {
+      description = "XRT management kernel module loader";
+      after = ["systemd-modules-load.service"];
+      wantedBy = ["multi-user.target"];
+
+      unitConfig = {
+        ConditionPathExists = "!/sys/module/xclmgmt";
+        # A kernel upgrade builds modules only for the next kernel. In that
+        # case, defer loading until reboot rather than failing activation.
+        ConditionPathIsDirectory = "${config.system.modulesTree}/lib/modules/%v";
+      };
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${pkgs.kmod}/bin/modprobe -d ${config.system.modulesTree} xclmgmt";
+      };
+    };
   };
 }

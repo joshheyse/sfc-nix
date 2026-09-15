@@ -69,6 +69,11 @@ installing the XRT userspace runtime, loading XOCL, or programming the FPGA.
 | `package` | package | auto | Override the kernel-module package |
 | `loadModuleAtBoot` | bool | `true` | Load `xclmgmt` during boot |
 
+When enabled, a generation-aware oneshot service also loads `xclmgmt` from
+the current system module tree. This permits an ordinary
+`nixos-rebuild switch` to add the driver while the running kernel is unchanged; if the new
+generation targets a different kernel, loading is deferred safely until boot.
+
 ### What the Module Does
 
 - Loads out-of-tree sfc + onload kernel modules at boot
