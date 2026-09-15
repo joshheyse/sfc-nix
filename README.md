@@ -1,6 +1,6 @@
 # sfc-nix
 
-Nix flake for Solarflare NIC tooling — [OpenOnload](https://github.com/Xilinx-CNS/onload), [TCPDirect](https://github.com/Xilinx-CNS/tcpdirect), [sfptpd](https://github.com/Xilinx-CNS/sfptpd), [SolarCapture](https://github.com/Xilinx-CNS/solarcapture), and more.
+Nix flake for Solarflare NIC and AMD/Xilinx accelerator tooling — [OpenOnload](https://github.com/Xilinx-CNS/onload), [TCPDirect](https://github.com/Xilinx-CNS/tcpdirect), [sfptpd](https://github.com/Xilinx-CNS/sfptpd), [SolarCapture](https://github.com/Xilinx-CNS/solarcapture), XRT management, and more.
 
 Provides kernel bypass networking, precision time sync, packet capture, and performance measurement tools for Solarflare NICs on NixOS.
 
@@ -17,7 +17,9 @@ Provides kernel bypass networking, precision time sync, packet capture, and perf
 | `packages.x86_64-linux.sysjitter` | System jitter measurement for latency-sensitive isolated cores |
 | `packages.x86_64-linux.sfnettest` | Network latency (sfnt-pingpong) and throughput (sfnt-stream) tools |
 | `packages.x86_64-linux.ebpf-asm` | eBPF program assembler with Intel-like syntax |
+| `packages.x86_64-linux.xrt-xclmgmt` | XRT management kernel driver for Alveo accelerator cards |
 | `nixosModules.default` | NixOS module (`networking.openonload.*`) with kernel modules |
+| `nixosModules.xrt-management` | Standalone XRT management-driver module |
 | `overlays.default` | Adds all packages to nixpkgs |
 | `devShells.x86_64-linux.default` | Shell with onload, tcpdirect, sfnettest, sysjitter, gcc, make |
 
@@ -37,6 +39,9 @@ sfc-nix.nixosModules.default
 
 # In configuration.nix:
 networking.openonload.enable = true;
+
+# Optional: expose management and hwmon telemetry for an X3522PV accelerator.
+hardware.xilinx.xrtManagement.enable = true;
 ```
 
 ### Module Options
@@ -50,6 +55,19 @@ networking.openonload.enable = true;
 | `accessGroup` | string | `"wheel"` | Group for ef_vi device access |
 | `physModeGid` | `"root-only"` \| `"cap-net-raw"` \| int | `"root-only"` | Who may allocate `EF_PD_PHYS_MODE` PDs. `"cap-net-raw"` (-1) lets setcap'd binaries use phys mode without root |
 | `installExamples` | bool | `false` | Install ef_vi sample binaries |
+
+### XRT management options
+
+The default module also provides `hardware.xilinx.xrtManagement`. This builds
+and loads only XRT's `xclmgmt` kernel module. It is sufficient for management
+and hwmon discovery on supported Alveo cards such as the X3522PV, without
+installing the XRT userspace runtime, loading XOCL, or programming the FPGA.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | bool | `false` | Enable the XRT management driver |
+| `package` | package | auto | Override the kernel-module package |
+| `loadModuleAtBoot` | bool | `true` | Load `xclmgmt` during boot |
 
 ### What the Module Does
 

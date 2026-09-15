@@ -37,6 +37,9 @@
     sysjitterPackage = pkgs.callPackage ./sysjitter.nix {};
     sfnettestPackage = pkgs.callPackage ./sfnettest.nix {};
     ebpfAsmPackage = pkgs.callPackage ./ebpf-asm.nix {};
+    xrtXclmgmtPackage = pkgs.callPackage ./xrt-xclmgmt.nix {
+      kernel = pkgs.linuxPackages.kernel;
+    };
     solarcapturePackage = pkgs.callPackage ./solarcapture.nix {
       openonload = basePackage;
       inherit onloadSrc;
@@ -51,10 +54,12 @@
       sysjitter = sysjitterPackage;
       sfnettest = sfnettestPackage;
       ebpf-asm = ebpfAsmPackage;
+      xrt-xclmgmt = xrtXclmgmtPackage;
       solarcapture = solarcapturePackage;
     };
 
     nixosModules.default = import ./module.nix;
+    nixosModules.xrt-management = import ./xrt-module.nix;
 
     overlays.default = final: _prev: {
       openonload = final.callPackage ./package.nix {};
@@ -66,6 +71,9 @@
       sysjitter = final.callPackage ./sysjitter.nix {};
       sfnettest = final.callPackage ./sfnettest.nix {};
       ebpf-asm = final.callPackage ./ebpf-asm.nix {};
+      xrt-xclmgmt = final.callPackage ./xrt-xclmgmt.nix {
+        kernel = final.linuxPackages.kernel;
+      };
       solarcapture = final.callPackage ./solarcapture.nix {
         inherit (final) openonload;
         inherit onloadSrc;

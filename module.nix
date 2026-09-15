@@ -19,6 +19,8 @@ with lib; let
 
   sfptpdPackage = pkgs.callPackage ./sfptpd.nix {};
 in {
+  imports = [./xrt-module.nix];
+
   options.networking.openonload = {
     enable = mkEnableOption "OpenOnload kernel bypass networking for Solarflare NICs";
 
