@@ -32,19 +32,15 @@
 }:
 stdenv.mkDerivation rec {
   pname = "openonload";
-  # Pinned to upstream master (post-v9.0.2): the latest tagged release predates
-  # Linux 6.18 and fails to build against it, whereas master documents support
-  # for kernel.org 6.1-7.0 and carries the 6.18 fixes (folio-based hugetlb
-  # index, net-driver auxbus updates). Revisit when a >9.0.2 tag ships.
-  version = "9.0.2-unstable-2026-06-30";
+  version = "9.2.1";
 
   outputs = ["out" "examples"] ++ lib.optionals (kernel != null) ["kmod"];
 
   src = fetchFromGitHub {
     owner = "Xilinx-CNS";
     repo = "onload";
-    rev = "3743bc95084fcbe6bcada4f528da30beb57af856";
-    hash = "sha256-sBJt6pIiSSYjt2NY8N75ugkcFgwdHf5GHzk+mBJU6wc=";
+    rev = "e3a8da30acef0195ce8055d0b2ef4c62f373aeb9";
+    hash = "sha256-U6Ggx6mrFRoudLA/4u+LGVP/19i1zhOjAXCsKGqB4/A=";
   };
 
   nativeBuildInputs = [

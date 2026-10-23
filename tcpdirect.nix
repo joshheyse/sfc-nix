@@ -25,13 +25,13 @@
 }:
 stdenv.mkDerivation rec {
   pname = "tcpdirect";
-  version = "9.0.2";
+  version = "9.2.1";
 
   src = fetchFromGitHub {
     owner = "Xilinx-CNS";
     repo = "tcpdirect";
     rev = "tcpdirect-${version}";
-    hash = "sha256-ANQPYIx43yb/xr9stvwx4i2vGmLwhO1rA7WZJJb0ScI=";
+    hash = "sha256-/sZxpi1/gh0PD70Cai1opyvCJxSzQTqllLf5KCr7Ht8=";
   };
 
   nativeBuildInputs = [
